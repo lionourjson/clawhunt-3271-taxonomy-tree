@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Input, Tree } from 'tdesign-react';
+import { Input, Tag } from 'tdesign-react';
 import type { TagNode } from '../lib/tags';
 import { filterTree, moveNode } from '../lib/tags';
 
@@ -8,20 +8,55 @@ interface TagTreeProps {
   onNodesChange?: (nodes: TagNode[]) => void;
 }
 
-/** 标签树：展开 / 搜索过滤 / 拖拽排序；已停用标签灰色显示并带「已停用」标记 */
+/** 标签树：展开 / 搜索过滤 / 拖拽排序（HTML5 DnD）；已停用标签灰色显示并带「已停用」标记 */
 export default function TagTree({ nodes, onNodesChange }: TagTreeProps) {
   const [keyword, setKeyword] = useState('');
-  const [expanded, setExpanded] = useState<string[]>(['ind']);
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(['ind', 'ind-mfg', 'svc']));
+  const [dragId, setDragId] = useState<string | null>(null);
 
   const visible = useMemo(() => filterTree(nodes, keyword), [nodes, keyword]);
 
-  const handleDrop = (ctx: { dragNode: { id?: string }; targetNode: { id?: string }; dropPosition?: number }) => {
-    const dragId = ctx?.dragNode?.id;
-    const dropId = ctx?.targetNode?.id;
-    if (!dragId || !dropId || dragId === dropId) return;
-    const position = ctx?.dropPosition === -1 ? 'before' : ctx?.dropPosition === 1 ? 'after' : 'inside';
-    onNodesChange?.(moveNode(nodes, dragId, dropId, position));
+  const toggle = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const drop = (dropId: string) => {
+    if (dragId && dragId !== dropId) {
+      onNodesChange?.(moveNode(nodes, dragId, dropId, 'after'));
+    }
+    setDragId(null);
   };
+
+  const renderList = (list: TagNode[], depth: number) => (
+    <ul style={{ listStyle: 'none', paddingLeft: depth * 18, margin: 0 }}>
+      {list.map((n) => (
+        <li
+          key={n.id}
+          data-testid={`tree-node-${n.id}`}
+          draggable
+          onDragStart={() => setDragId(n.id)}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={() => drop(n.id)}
+          style={{ padding: '4px 0' }}
+        >
+          <span
+            style={{ cursor: n.children ? 'pointer' : 'default', marginRight: 6, userSelect: 'none' }}
+            onClick={() => n.children && toggle(n.id)}
+            data-testid={`toggle-${n.id}`}
+          >
+            {n.children ? (expanded.has(n.id) ? '▾' : '▸') : '·'}
+          </span>
+          <span style={n.disabled ? { color: '#a8a8a8' } : undefined}>{n.label}</span>
+          {n.disabled && <Tag theme="default" style={{ marginLeft: 6 }}>已停用</Tag>}
+          {n.children && expanded.has(n.id) && renderList(n.children, depth + 1)}
+        </li>
+      ))}
+    </ul>
+  );
 
   return (
     <div className="tag-tree-panel" data-testid="tag-tree-panel">
@@ -33,19 +68,8 @@ export default function TagTree({ nodes, onNodesChange }: TagTreeProps) {
         onChange={(v: unknown) => setKeyword(String(v ?? ''))}
         style={{ marginBottom: 12 }}
       />
-      <Tree
-        data-testid="tag-tree"
-        data={visible as never}
-        draggable
-        expandLevel={0}
-        expanded={expanded}
-        onExpand={(ids: unknown) => setExpanded((ids as string[]) ?? [])}
-        onDrop={handleDrop as never}
-        transition
-      />
-      {keyword && visible.length === 0 && (
-        <div data-testid="search-empty">未找到匹配的标签</div>
-      )}
+      {renderList(visible, 0)}
+      {keyword && visible.length === 0 && <div data-testid="search-empty">未找到匹配的标签</div>}
     </div>
   );
 }

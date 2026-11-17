@@ -3,7 +3,12 @@ import { Button, Empty, Loading, Skeleton } from 'tdesign-react';
 import TagTree from './components/TagTree';
 import { fetchTags, type ForcedState, type TagNode } from './lib/tags';
 
-/** 三态与延迟由 URL 参数驱动（用于验收截图）：?state=empty|loading|error&delay=600 */
+/** 三态与延迟由 URL 参数驱动（用于验收截图）：?state=empty|loading|error&delay=600；测试可直接传 props */
+interface AppProps {
+  forcedState?: ForcedState;
+  delay?: number;
+}
+
 function readForcedState(): { forced: ForcedState; delay: number } {
   const p = new URLSearchParams(window.location.search);
   const raw = p.get('state');
@@ -12,8 +17,10 @@ function readForcedState(): { forced: ForcedState; delay: number } {
   return { forced, delay: Number(p.get('delay') ?? 600) };
 }
 
-export default function App() {
-  const { forced, delay } = readForcedState();
+export default function App({ forcedState, delay: delayProp }: AppProps = {}) {
+  const fromUrl = readForcedState();
+  const forced: ForcedState = forcedState ?? fromUrl.forced;
+  const delay = delayProp ?? fromUrl.delay;
   const [nodes, setNodes] = useState<TagNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

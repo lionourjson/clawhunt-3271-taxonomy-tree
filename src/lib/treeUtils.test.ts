@@ -11,7 +11,7 @@ describe('filterTree（搜索过滤）', () => {
   });
 
   it('大小写不敏感，且未命中时返回空数组', () => {
-    expect(filterTree(DEMO_TAGS, 'DESIGN')).toHaveLength(1);
+    expect(filterTree(DEMO_TAGS, '服务')).toHaveLength(1);
     expect(filterTree(DEMO_TAGS, '不存在的标签')).toHaveLength(0);
   });
 

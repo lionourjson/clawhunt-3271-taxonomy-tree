@@ -61,6 +61,7 @@ export function moveNode(
   dropId: string,
   position: 'before' | 'after' | 'inside',
 ): TagNode[] {
+  if (dragId === dropId) return nodes;
   const removed = removeNode(nodes, dragId);
   if (!removed.node) return nodes;
   return insertNode(removed.list, dropId, removed.node, position);
@@ -77,7 +78,7 @@ function removeNode(list: TagNode[], id: string): { list: TagNode[]; node: TagNo
     if (n.children) {
       const sub = removeNode(n.children, id);
       if (sub.node) picked = sub.node;
-      out.push({ ...n, children: sub.list });
+      out.push({ ...n, children: sub.list.length > 0 ? sub.list : undefined });
     } else {
       out.push(n);
     }
