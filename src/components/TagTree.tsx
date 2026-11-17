@@ -38,9 +38,18 @@ export default function TagTree({ nodes, onNodesChange }: TagTreeProps) {
           key={n.id}
           data-testid={`tree-node-${n.id}`}
           draggable
-          onDragStart={() => setDragId(n.id)}
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={() => drop(n.id)}
+          onDragStart={(e) => {
+            e.stopPropagation();  // 嵌套树：阻止冒泡到祖先节点，dragId 才是真正拖的那个
+            setDragId(n.id);
+          }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onDrop={(e) => {
+            e.stopPropagation();
+            drop(n.id);
+          }}
           style={{ padding: '4px 0' }}
         >
           <span
