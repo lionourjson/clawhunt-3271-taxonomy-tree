@@ -21,3 +21,19 @@ if (typeof window !== 'undefined' && !('ResizeObserver' in window)) {
   }
   (window as unknown as { ResizeObserver: unknown }).ResizeObserver = ResizeObserverStub;
 }
+
+// MSW：测试里用同一套模拟接口，每个用例结束后恢复初始数据
+import { afterAll, afterEach, beforeAll } from 'vitest';
+import { cleanup } from '@testing-library/react';
+import { MessagePlugin } from 'tdesign-react';
+import { server } from './mocks/node';
+import { resetDb } from './mocks/handlers';
+
+beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
+afterEach(() => {
+  cleanup();
+  MessagePlugin.closeAll();
+  server.resetHandlers();
+  resetDb();
+});
+afterAll(() => server.close());

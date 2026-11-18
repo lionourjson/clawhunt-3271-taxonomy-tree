@@ -1,84 +1,107 @@
-import { useMemo, useState } from 'react';
-import { Input, Tag } from 'tdesign-react';
-import type { TagNode } from '../lib/tags';
-import { filterTree, moveNode } from '../lib/tags';
+import { Tag } from 'tdesign-react';
+import { splitHighlight, type TagNode } from '../lib/tags';
 
 interface TagTreeProps {
   nodes: TagNode[];
-  onNodesChange?: (nodes: TagNode[]) => void;
+  keyword: string;
+  expanded: Set<string>;
+  onToggle: (id: string) => void;
+  onDragStartNode: (id: string) => void;
+  onDropOnNode: (id: string) => void;
+  onContextMenuNode: (id: string, x: number, y: number) => void;
 }
 
-/** 标签树：展开 / 搜索过滤 / 拖拽排序（HTML5 DnD）；已停用标签灰色显示并带「已停用」标记 */
-export default function TagTree({ nodes, onNodesChange }: TagTreeProps) {
-  const [keyword, setKeyword] = useState('');
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(['ind', 'ind-mfg', 'svc']));
-  const [dragId, setDragId] = useState<string | null>(null);
+function Label({ text, keyword }: { text: string; keyword: string }) {
+  return (
+    <>
+      {splitHighlight(text, keyword).map((p, i) =>
+        p.hit ? (
+          <mark key={i} className="kw-hit" data-testid="kw-hit">
+            {p.text}
+          </mark>
+        ) : (
+          <span key={i}>{p.text}</span>
+        ),
+      )}
+    </>
+  );
+}
 
-  const visible = useMemo(() => filterTree(nodes, keyword), [nodes, keyword]);
+/**
+ * 标签树（受控）：展开状态、拖拽、右键菜单都交给页面处理。
+ * 每个节点显示：展开箭头、名称（搜索命中处高亮）、状态标签、引用数。已停用的节点整行置灰。
+ */
+export default function TagTree(props: TagTreeProps) {
+  const { nodes, keyword, expanded, onToggle, onDragStartNode, onDropOnNode, onContextMenuNode } = props;
 
-  const toggle = (id: string) =>
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-
-  const drop = (dropId: string) => {
-    if (dragId && dragId !== dropId) {
-      onNodesChange?.(moveNode(nodes, dragId, dropId, 'after'));
-    }
-    setDragId(null);
-  };
-
-  const renderList = (list: TagNode[], depth: number) => (
-    <ul style={{ listStyle: 'none', paddingLeft: depth * 18, margin: 0 }}>
-      {list.map((n) => (
-        <li
-          key={n.id}
-          data-testid={`tree-node-${n.id}`}
-          draggable
-          onDragStart={(e) => {
-            e.stopPropagation();  // 嵌套树：阻止冒泡到祖先节点，dragId 才是真正拖的那个
-            setDragId(n.id);
-          }}
-          onDragOver={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-          onDrop={(e) => {
-            e.stopPropagation();
-            drop(n.id);
-          }}
-          style={{ padding: '4px 0' }}
-        >
-          <span
-            style={{ cursor: n.children ? 'pointer' : 'default', marginRight: 6, userSelect: 'none' }}
-            onClick={() => n.children && toggle(n.id)}
-            data-testid={`toggle-${n.id}`}
-          >
-            {n.children ? (expanded.has(n.id) ? '▾' : '▸') : '·'}
-          </span>
-          <span style={n.disabled ? { color: '#a8a8a8' } : undefined}>{n.label}</span>
-          {n.disabled && <Tag theme="default" style={{ marginLeft: 6 }}>已停用</Tag>}
-          {n.children && expanded.has(n.id) && renderList(n.children, depth + 1)}
-        </li>
-      ))}
+  const renderList = (list: TagNode[], level: number) => (
+    <ul role={level === 1 ? 'tree' : 'group'} aria-label={level === 1 ? '标签树' : undefined} className="tag-tree-list">
+      {list.map((n) => {
+        const hasKids = !!n.children && n.children.length > 0;
+        const open = hasKids && expanded.has(n.id);
+        const disabled = n.status === 'disabled';
+        return (
+          <li key={n.id} role="none">
+            <div
+              role="treeitem"
+              aria-level={level}
+              aria-expanded={hasKids ? open : undefined}
+              aria-disabled={disabled || undefined}
+              data-testid={`tree-node-${n.id}`}
+              className={`tag-row${disabled ? ' is-disabled' : ''}`}
+              style={{ paddingLeft: 8 + (level - 1) * 22 }}
+              draggable
+              onDragStart={(e) => {
+                e.stopPropagation();
+                e.dataTransfer?.setData('text/plain', n.id);
+                onDragStartNode(n.id);
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onDropOnNode(n.id);
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                onContextMenuNode(n.id, e.clientX, e.clientY);
+              }}
+            >
+              <button
+                type="button"
+                className="tag-toggle"
+                data-testid={`toggle-${n.id}`}
+                aria-label={hasKids ? (open ? `收起 ${n.label}` : `展开 ${n.label}`) : undefined}
+                disabled={!hasKids}
+                onClick={() => hasKids && onToggle(n.id)}
+              >
+                {hasKids ? (open ? '▾' : '▸') : ''}
+              </button>
+              <span className="tag-label">
+                <Label text={n.label} keyword={keyword} />
+              </span>
+              {disabled ? (
+                <Tag size="small" theme="default" variant="light" data-testid={`status-${n.id}`}>
+                  已停用
+                </Tag>
+              ) : (
+                <Tag size="small" theme="success" variant="light" data-testid={`status-${n.id}`}>
+                  启用
+                </Tag>
+              )}
+              <span className="tag-ref" data-testid={`ref-${n.id}`}>
+                引用 {n.refCount}
+              </span>
+            </div>
+            {open && n.children && renderList(n.children, level + 1)}
+          </li>
+        );
+      })}
     </ul>
   );
 
-  return (
-    <div className="tag-tree-panel" data-testid="tag-tree-panel">
-      <Input
-        data-testid="tag-search"
-        placeholder="搜索标签"
-        clearable
-        value={keyword}
-        onChange={(v: unknown) => setKeyword(String(v ?? ''))}
-        style={{ marginBottom: 12 }}
-      />
-      {renderList(visible, 0)}
-      {keyword && visible.length === 0 && <div data-testid="search-empty">未找到匹配的标签</div>}
-    </div>
-  );
+  return renderList(nodes, 1);
 }
